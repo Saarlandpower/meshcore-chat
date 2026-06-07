@@ -94,7 +94,7 @@ async def _meshcore_loop():
 
             def on_self_info(event):
                 global self_info
-                info = event.value if hasattr(event, "value") else event
+                info = event.payload if hasattr(event, "payload") and event.payload is not None else {}
                 if isinstance(info, dict):
                     self_info = {
                         "name":    info.get("name", "Unknown"),
@@ -120,7 +120,7 @@ async def _meshcore_loop():
                 asyncio.ensure_future(_push_contacts())
 
             def on_direct_msg(event):
-                msg = event.value if hasattr(event, "value") else event
+                msg = event.payload if hasattr(event, "payload") and event.payload is not None else {}
                 if not isinstance(msg, dict):
                     return
                 sender_key = msg.get("pubkey", "") or msg.get("pub_key", "") or ""
@@ -142,16 +142,22 @@ async def _meshcore_loop():
                 })
 
             def on_channel_msg(event):
-                msg = event.value if hasattr(event, "value") else event
+                msg = event.payload if hasattr(event, "payload") and event.payload is not None else {}
                 if not isinstance(msg, dict):
                     return
-                sender = msg.get("sender_name") or msg.get("name") or "?"
-                text   = msg.get("text", "") or msg.get("msg", "")
-                ch_idx = msg.get("channel_idx", 0)
-                ch_name = channels.get(ch_idx, {}).get("name", f"Ch{ch_idx}")
+                raw_text = msg.get("text", "") or msg.get("msg", "")
+                ch_idx   = msg.get("channel_idx", 0)
+                ch_name  = channels.get(ch_idx, {}).get("name", f"Ch{ch_idx}")
+                # sender_name may be separate or embedded as "Name: message"
+                sender   = msg.get("sender_name") or msg.get("sender") or ""
+                text     = raw_text
+                if not sender and ": " in raw_text:
+                    parts  = raw_text.split(": ", 1)
+                    sender = parts[0]
+                    text   = parts[1]
                 socketio.emit("message", {
                     "type":     "channel",
-                    "from":     str(sender),
+                    "from":     str(sender) or "?",
                     "channel":  ch_idx,
                     "ch_name":  ch_name,
                     "text":     str(text),
