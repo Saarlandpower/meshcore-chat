@@ -1,0 +1,18 @@
+[Unit]
+Description=meshcore-chat — Web-based MeshCore Companion Radio Client
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/meshcore-chat
+EnvironmentFile=-/opt/meshcore-chat/.env
+ExecStart=/usr/bin/python3 /opt/meshcore-chat/server.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

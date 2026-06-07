@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>meshcore-chat</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg:        #070a0d;
+  --bg2:       #0c1117;
+  --bg3:       #111820;
+  --bg4:       #161f28;
+  --border:    #1c2a35;
+  --border2:   #243344;
+  --green:     #00e5a0;
+  --green-dim: #006644;
+  --amber:     #f5a623;
+  --red:       #ff4455;
+  --blue:      #4fc3f7;
+  --purple:    #b39ddb;
+  --text:      #c8d8e4;
+  --text-dim:  #3d5468;
+  --text-mid:  #7a9ab0;
+  --mono:      'Share Tech Mono', monospace;
+  --sans:      'Inter', sans-serif;
+  --sidebar-w: 240px;
+  --tab-h:     40px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ── Header ── */
+header {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.logo {
+  font-family: var(--mono);
+  font-size: 1rem;
+  color: var(--green);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.logo em { color: var(--text-dim); font-style: normal; }
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-mid);
+  white-space: nowrap;
+}
+.status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+}
+.status-dot.on { background: var(--green); animation: blink 2.5s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.self-badge {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--amber);
+  border: 1px solid var(--green-dim);
+  background: rgba(0,229,160,0.04);
+  padding: 3px 10px;
+  border-radius: 3px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.self-badge small { color: var(--text-dim); font-size: 0.6rem; margin-left: 6px; }
+
+/* ── Layout ── */
+.layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ── */
+aside {
+  width: var(--sidebar-w);
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.stab {
+  flex: 1;
+  height: var(--tab-h);
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 1px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: color .15s, background .15s;
+  border-bottom: 2px solid transparent;
+}
+.stab:hover { color: var(--text-mid); }
+.stab.active { color: var(--green); border-bottom-color: var(--green); }
+
+.sidebar-panel { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+.sidebar-panel.active { display: flex; }
+
+.panel-header {
+  padding: 8px 12px;
+  font-size: 0.6rem;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  font-family: var(--mono);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.panel-header .count {
+  background: var(--bg3);
+  color: var(--text-mid);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.6rem;
+}
+.refresh-btn {
+  background: none; border: none;
+  color: var(--text-dim); cursor: pointer;
+  font-size: 1rem; line-height: 1;
+  padding: 2px 4px;
+  transition: color .2s;
+}
+.refresh-btn:hover { color: var(--green); }
+
+/* Contact items */
+.contact-item, .channel-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  transition: background .12s;
+  border-left: 2px solid transparent;
+  flex-shrink: 0;
+}
+.contact-item:hover, .channel-item:hover { background: var(--bg3); }
+.contact-item.active { background: var(--bg4); border-left-color: var(--green); }
+.channel-item.active { background: var(--bg4); border-left-color: var(--blue); }
+
+.item-icon {
+  width: 30px; height: 30px;
+  border-radius: 5px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  color: var(--green);
+  flex-shrink: 0;
+  font-weight: 600;
+}
+.item-icon.repeater { color: var(--amber); }
+.item-icon.room     { color: var(--purple); }
+.item-icon.channel  { color: var(--blue); font-size: 0.9rem; }
+.item-icon.gps::after {
+  content: '●';
+  position: absolute;
+  font-size: 0.4rem;
+  color: var(--green);
+  bottom: 2px; right: 2px;
+}
+.item-icon { position: relative; }
+
+.item-info { flex: 1; min-width: 0; }
+.item-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.item-meta {
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  margin-top: 1px;
+}
+.gps-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.empty-list {
+  padding: 20px 12px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  text-align: center;
+  letter-spacing: 1px;
+}
+
+/* ── Main area ── */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Main tabs ── */
+.main-tabs {
+  display: flex;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mtab {
+  padding: 0 16px;
+  height: var(--tab-h);
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 1px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: color .15s;
+  border-bottom: 2px solid transparent;
+}
+.mtab:hover { color: var(--text-mid); }
+.mtab.active { color: var(--text); border-bottom-color: var(--green); }
+
+.main-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.main-panel.active { display: flex; }
+
+/* ── Chat panel ── */
+.chat-header {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  background: var(--bg2);
+}
+.chat-target { font-weight: 600; color: var(--text); }
+.chat-type-badge {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 1px;
+}
+.chat-type-badge.channel { background: rgba(79,195,247,.1); color: var(--blue); border: 1px solid rgba(79,195,247,.2); }
+.chat-type-badge.direct  { background: rgba(0,229,160,.08); color: var(--green); border: 1px solid rgba(0,229,160,.15); }
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.msg {
+  display: flex;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  animation: msgIn .15s ease;
+}
+@keyframes msgIn { from { opacity:0; transform:translateY(3px) } }
+.msg:hover { background: var(--bg3); }
+.msg.self { flex-direction: row-reverse; }
+
+.msg-avatar {
+  width: 26px; height: 26px;
+  border-radius: 4px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--green);
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-weight: 700;
+}
+.msg.self .msg-avatar { color: var(--amber); }
+.msg-avatar.repeater { color: var(--amber); }
+.msg-avatar.channel  { color: var(--blue); }
+
+.msg-body { flex: 1; min-width: 0; }
+.msg-from-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.msg.self .msg-from-row { flex-direction: row-reverse; }
+.msg-from {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--green);
+  font-family: var(--mono);
+}
+.msg.self .msg-from { color: var(--amber); }
+.msg-from.ch { color: var(--blue); }
+.msg-time {
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+.msg-text {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-word;
+}
+.msg.self .msg-text { text-align: right; }
+
+.sys-line {
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  padding: 4px 0;
+  letter-spacing: 1px;
+}
+.sys-line.ok    { color: var(--green); }
+.sys-line.error { color: var(--red); }
+.sys-line.warn  { color: var(--amber); }
+
+.empty-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-dim);
+}
+.empty-chat .icon { font-size: 2.5rem; opacity: .2; }
+.empty-chat p { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 1px; }
+
+/* ── Input ── */
+.input-area {
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  gap: 8px;
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+.input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0 12px;
+  transition: border-color .2s;
+}
+.input-wrap:focus-within { border-color: var(--green-dim); }
+.input-wrap input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text); font-family: var(--sans); font-size: 0.875rem;
+  padding: 9px 0;
+}
+.input-wrap input::placeholder { color: var(--text-dim); }
+.input-wrap input:disabled { opacity: .4; }
+.send-btn {
+  background: var(--green); border: none;
+  color: #000; font-family: var(--mono); font-size: 0.75rem;
+  font-weight: 700; letter-spacing: 1px;
+  padding: 9px 16px; border-radius: 5px;
+  cursor: pointer; transition: background .15s, transform .1s;
+  flex-shrink: 0;
+}
+.send-btn:hover { background: #00ffc0; }
+.send-btn:active { transform: scale(.97); }
+.send-btn:disabled { background: var(--bg4); color: var(--text-dim); cursor: not-allowed; }
+
+/* ── Map panel ── */
+#map-panel {
+  position: relative;
+}
+#map {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+.map-overlay {
+  position: absolute;
+  top: 12px; left: 12px;
+  z-index: 1000;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-mid);
+  pointer-events: none;
+}
+
+/* ── Contacts detail panel ── */
+#contacts-panel {
+  overflow-y: auto;
+  padding: 12px;
+}
+.contact-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.contact-card:hover { border-color: var(--border2); background: var(--bg4); }
+.contact-card.active { border-color: var(--green-dim); }
+.card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.card-icon {
+  width: 34px; height: 34px;
+  border-radius: 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 0.75rem;
+  font-weight: 700; color: var(--green);
+}
+.card-icon.repeater { color: var(--amber); }
+.card-icon.room     { color: var(--purple); }
+.card-name { font-weight: 600; font-size: 0.875rem; }
+.card-type {
+  font-family: var(--mono); font-size: 0.6rem;
+  padding: 2px 6px; border-radius: 3px; margin-left: auto;
+}
+.card-type.repeater { background: rgba(245,166,35,.1); color: var(--amber); border: 1px solid rgba(245,166,35,.2); }
+.card-type.client   { background: rgba(0,229,160,.08); color: var(--green); border: 1px solid rgba(0,229,160,.15); }
+.card-type.room     { background: rgba(179,157,219,.1); color: var(--purple); border: 1px solid rgba(179,157,219,.2); }
+.card-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.card-field { font-size: 0.68rem; color: var(--text-dim); font-family: var(--mono); }
+.card-field span { color: var(--text-mid); }
+.card-actions { margin-top: 8px; display: flex; gap: 6px; }
+.card-btn {
+  flex: 1; padding: 5px; border-radius: 4px; border: 1px solid var(--border2);
+  background: var(--bg2); color: var(--text-mid);
+  font-family: var(--mono); font-size: 0.65rem; cursor: pointer;
+  transition: all .15s; letter-spacing: 1px;
+}
+.card-btn:hover { border-color: var(--green-dim); color: var(--green); }
+.card-btn.map-btn:hover { border-color: rgba(79,195,247,.3); color: var(--blue); }
+
+/* scanlines */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.025) 2px, rgba(0,0,0,0.025) 4px);
+  pointer-events: none;
+  z-index: 9999;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">mesh<em>//</em>chat</div>
+  <div class="status-pill">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Verbinde...</span>
+  </div>
+  <div class="self-badge" id="selfBadge">
+    ---
+    <small id="selfFreq"></small>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <aside>
+    <div class="sidebar-tabs">
+      <button class="stab active" onclick="showSTab('chats')" id="stab-chats">Chats</button>
+      <button class="stab" onclick="showSTab('nodes')" id="stab-nodes">Nodes</button>
+    </div>
+
+    <!-- Chats panel: Channels + Contacts -->
+    <div class="sidebar-panel active" id="spanel-chats">
+      <div class="panel-header">
+        Channels
+        <button class="refresh-btn" onclick="doRefresh()" title="Aktualisieren">⟳</button>
+      </div>
+      <div id="channelList">
+        <div class="empty-list" id="noChannels">Lade...</div>
+      </div>
+
+      <div class="panel-header" style="margin-top:4px;">
+        Direkt
+        <span class="count" id="contactCount">0</span>
+      </div>
+      <div id="contactList">
+        <div class="empty-list" id="noContacts">Keine Nodes</div>
+      </div>
+    </div>
+
+    <!-- Nodes panel: detail cards -->
+    <div class="sidebar-panel" id="spanel-nodes">
+      <div class="panel-header">
+        Nodes
+        <span class="count" id="nodeCount">0</span>
+      </div>
+      <div id="nodeCards" style="padding:8px;overflow-y:auto;flex:1;"></div>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main>
+    <div class="main-tabs">
+      <button class="mtab active" onclick="showMTab('chat')" id="mtab-chat">Chat</button>
+      <button class="mtab" onclick="showMTab('map')" id="mtab-map">Karte</button>
+    </div>
+
+    <!-- Chat panel -->
+    <div class="main-panel active" id="mpanel-chat">
+      <div class="chat-header" id="chatHeader">
+        <span class="chat-target" id="chatTarget">Public</span>
+        <span class="chat-type-badge channel" id="chatTypeBadge">CHANNEL</span>
+      </div>
+      <div class="messages" id="messages">
+        <div class="empty-chat" id="emptyChat">
+          <div class="icon">📡</div>
+          <p>Wähle einen Channel oder Kontakt</p>
+        </div>
+      </div>
+      <div class="input-area">
+        <div class="input-wrap">
+          <input type="text" id="msgInput" placeholder="Nachricht..."
+                 maxlength="200" onkeydown="if(event.key==='Enter')sendMsg()">
+        </div>
+        <button class="send-btn" id="sendBtn" onclick="sendMsg()">TX</button>
+      </div>
+    </div>
+
+    <!-- Map panel -->
+    <div class="main-panel" id="mpanel-map">
+      <div class="map-overlay" id="mapOverlay">0 Nodes mit GPS</div>
+      <div id="map"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const socket = io();
+let currentTo   = "__channel__";
+let currentCh   = 0;
+let currentName = "Public";
+let currentType = "channel";
+let allContacts = {};   // key -> contact
+let allChannels = {};   // idx -> channel
+let msgStore    = {};   // target_key -> [{...}]
+let map = null;
+let mapMarkers  = {};   // key -> leaflet marker
+
+// ── Socket events ──────────────────────────────────────────────────────────
+socket.on("status", d => {
+  const dot = document.getElementById("statusDot");
+  const txt = document.getElementById("statusText");
+  dot.className = "status-dot" + (d.connected ? " on" : "");
+  txt.textContent = d.msg;
+  addSys(d.msg, d.connected ? "ok" : "warn");
+});
+
+socket.on("self_info", d => {
+  const b = document.getElementById("selfBadge");
+  b.childNodes[0].textContent = d.name || "---";
+  const f = document.getElementById("selfFreq");
+  if (d.freq) f.textContent = `${d.freq} MHz · SF${d.sf} · ${d.bw}kHz`;
+});
+
+socket.on("contacts", list => {
+  allContacts = {};
+  list.forEach(c => { allContacts[c.key] = c; });
+  renderContactList();
+  renderNodeCards();
+  document.getElementById("contactCount").textContent = list.length;
+  document.getElementById("nodeCount").textContent = list.length;
+  document.getElementById("noContacts").style.display = list.length ? "none" : "block";
+});
+
+socket.on("channels", list => {
+  allChannels = {};
+  list.forEach(ch => { allChannels[ch.idx] = ch; });
+  renderChannelList();
+  document.getElementById("noChannels").style.display = list.length ? "none" : "block";
+  // Select first channel by default if nothing selected
+  if (currentTo === "__channel__" && list.length > 0) {
+    const first = list[0];
+    selectChannel(first.idx, first.name);
+  }
+});
+
+socket.on("map_markers", markers => {
+  if (!map) initMap();
+  updateMapMarkers(markers);
+  document.getElementById("mapOverlay").textContent =
+    markers.filter(m => m.has_gps).length + " Nodes mit GPS";
+});
+
+socket.on("message", msg => {
+  const key = msg.type === "channel"
+    ? `ch_${msg.channel}`
+    : (msg.self ? `dm_${msg.to_key || currentTo}` : `dm_${msg.from_key || currentTo}`);
+  if (!msgStore[key]) msgStore[key] = [];
+  msgStore[key].push(msg);
+  const isActive = (msg.type === "channel" && currentType === "channel" && msg.channel === currentCh)
+                || (msg.type === "direct"  && currentType === "direct"  && (msg.from_key === currentTo || msg.self));
+  if (isActive || msg.self) {
+    removeEmptyChat();
+    renderMsg(msg);
+    scrollDown();
+  }
+});
+
+socket.on("error", d => addSys("⚠ " + d.msg, "error"));
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function renderChannelList() {
+  const list = document.getElementById("channelList");
+  list.querySelectorAll(".channel-item").forEach(e => e.remove());
+  Object.values(allChannels).forEach(ch => {
+    const el = document.createElement("div");
+    el.className = "channel-item" + (currentTo === "__channel__" && currentCh === ch.idx ? " active" : "");
+    el.dataset.idx = ch.idx;
+    el.innerHTML = `
+      <div class="item-icon channel">#</div>
+      <div class="item-info">
+        <div class="item-name">${esc(ch.name)}</div>
+        <div class="item-meta">ch${ch.idx} · hash ${ch.hash}</div>
+      </div>`;
+    el.onclick = () => selectChannel(ch.idx, ch.name);
+    list.appendChild(el);
+  });
+}
+
+function renderContactList() {
+  const list = document.getElementById("contactList");
+  list.querySelectorAll(".contact-item").forEach(e => e.remove());
+  const sorted = Object.values(allContacts).sort((a,b) => (b.last_seen||0)-(a.last_seen||0));
+  sorted.forEach(c => {
+    const el = document.createElement("div");
+    el.className = "contact-item" + (currentTo === c.key ? " active" : "");
+    el.dataset.key = c.key;
+    const initials = (c.name||"??").substring(0,2).toUpperCase();
+    const iconClass = c.type === "repeater" ? "repeater" : c.type === "room" ? "room" : "";
+    const age = c.last_seen ? relTime(c.last_seen) : "?";
+    el.innerHTML = `
+      <div class="item-icon ${iconClass}">${initials}</div>
+      <div class="item-info">
+        <div class="item-name">${esc(c.name)}</div>
+        <div class="item-meta">${c.type} · ${age}</div>
+      </div>
+      ${c.has_gps ? '<div class="gps-dot"></div>' : ''}`;
+    el.onclick = () => selectContact(c.key, c.name, c.type);
+    list.appendChild(el);
+  });
+}
+
+function renderNodeCards() {
+  const container = document.getElementById("nodeCards");
+  container.innerHTML = "";
+  const sorted = Object.values(allContacts).sort((a,b) => (b.last_seen||0)-(a.last_seen||0));
+  sorted.forEach(c => {
+    const initials = (c.name||"??").substring(0,2).toUpperCase();
+    const iconClass = c.type === "repeater" ? "repeater" : c.type === "room" ? "room" : "";
+    const age = c.last_seen ? relTime(c.last_seen) : "unbekannt";
+    const lat  = c.lat ? c.lat.toFixed(4) : "–";
+    const lon  = c.lon ? c.lon.toFixed(4) : "–";
+    const card = document.createElement("div");
+    card.className = "contact-card";
+    card.innerHTML = `
+      <div class="card-header">
+        <div class="card-icon ${iconClass}">${initials}</div>
+        <div class="card-name">${esc(c.name)}</div>
+        <span class="card-type ${c.type}">${c.type}</span>
+      </div>
+      <div class="card-meta">
+        <div class="card-field">Zuletzt: <span>${age}</span></div>
+        <div class="card-field">Key: <span>${c.key}</span></div>
+        ${c.has_gps ? `<div class="card-field">Lat: <span>${lat}</span></div>
+        <div class="card-field">Lon: <span>${lon}</span></div>` : '<div class="card-field">GPS: <span>–</span></div><div></div>'}
+      </div>
+      <div class="card-actions">
+        <button class="card-btn" onclick="selectContact('${c.key}','${esc(c.name)}','${c.type}');showMTab('chat');showSTab('chats')">💬 Nachricht</button>
+        ${c.has_gps ? `<button class="card-btn map-btn" onclick="focusMapNode('${c.key}')">🗺 Karte</button>` : ''}
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function renderMsg(msg) {
+  const msgs = document.getElementById("messages");
+  const div  = document.createElement("div");
+  div.className = "msg" + (msg.self ? " self" : "");
+  const t = new Date((msg.ts||0)*1000);
+  const time = t.toLocaleTimeString("de-DE", {hour:"2-digit",minute:"2-digit"});
+  const from = msg.self ? "Ich" : (msg.from || "?");
+  const initials = from.substring(0,2).toUpperCase();
+  const isCh = msg.type === "channel";
+  div.innerHTML = `
+    <div class="msg-avatar ${isCh ? 'channel' : ''}">${initials}</div>
+    <div class="msg-body">
+      <div class="msg-from-row">
+        <span class="msg-from ${isCh ? 'ch' : ''}">${esc(from)}</span>
+        <span class="msg-time">${time}</span>
+      </div>
+      <div class="msg-text">${esc(msg.text)}</div>
+    </div>`;
+  msgs.appendChild(div);
+}
+
+function addSys(text, cls) {
+  const msgs = document.getElementById("messages");
+  const div  = document.createElement("div");
+  div.className = "sys-line " + (cls||"");
+  div.textContent = text;
+  msgs.appendChild(div);
+  scrollDown();
+}
+
+// ── Selection ──────────────────────────────────────────────────────────────
+function selectChannel(idx, name) {
+  currentTo   = "__channel__";
+  currentCh   = idx;
+  currentName = name;
+  currentType = "channel";
+  updateChatHeader();
+  document.querySelectorAll(".channel-item").forEach(e =>
+    e.classList.toggle("active", parseInt(e.dataset.idx) === idx));
+  document.querySelectorAll(".contact-item").forEach(e => e.classList.remove("active"));
+  renderStoredMsgs(`ch_${idx}`);
+}
+
+function selectContact(key, name, type) {
+  currentTo   = key;
+  currentName = name;
+  currentType = "direct";
+  updateChatHeader();
+  document.querySelectorAll(".contact-item").forEach(e =>
+    e.classList.toggle("active", e.dataset.key === key));
+  document.querySelectorAll(".channel-item").forEach(e => e.classList.remove("active"));
+  document.querySelectorAll(".contact-card").forEach(e =>
+    e.classList.toggle("active", e.querySelector(".card-name")?.textContent === name));
+  renderStoredMsgs(`dm_${key}`);
+  showMTab("chat");
+}
+
+function updateChatHeader() {
+  document.getElementById("chatTarget").textContent = currentName;
+  const badge = document.getElementById("chatTypeBadge");
+  badge.textContent = currentType === "channel" ? "CHANNEL" : "DIREKT";
+  badge.className = "chat-type-badge " + currentType;
+}
+
+function renderStoredMsgs(key) {
+  const msgs = document.getElementById("messages");
+  msgs.innerHTML = "";
+  const stored = msgStore[key] || [];
+  if (!stored.length) {
+    msgs.innerHTML = `<div class="empty-chat" id="emptyChat">
+      <div class="icon">📡</div><p>Noch keine Nachrichten</p></div>`;
+    return;
+  }
+  stored.forEach(renderMsg);
+  scrollDown();
+}
+
+function removeEmptyChat() {
+  document.getElementById("emptyChat")?.remove();
+}
+
+// ── Send ───────────────────────────────────────────────────────────────────
+function sendMsg() {
+  const input = document.getElementById("msgInput");
+  const text  = input.value.trim();
+  if (!text) return;
+  socket.emit("send_message", {
+    to:      currentTo,
+    channel: currentCh,
+    text:    text,
+  });
+  input.value = "";
+}
+
+// ── Map ────────────────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map("map", { zoomControl: true }).setView([49.24, 7.0], 10);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap",
+    maxZoom: 18,
+  }).addTo(map);
+}
+
+function updateMapMarkers(markers) {
+  if (!map) initMap();
+  // Remove old
+  Object.values(mapMarkers).forEach(m => m.remove());
+  mapMarkers = {};
+  markers.filter(c => c.has_gps).forEach(c => {
+    const color = c.type === "repeater" ? "#f5a623"
+                : c.type === "room"     ? "#b39ddb"
+                : "#00e5a0";
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="
+        background:${color};color:#000;
+        font-family:'Share Tech Mono',monospace;
+        font-size:10px;font-weight:700;
+        padding:3px 6px;border-radius:4px;
+        white-space:nowrap;
+        box-shadow:0 2px 8px rgba(0,0,0,.5);
+        border:1px solid rgba(0,0,0,.3);
+      ">${c.name}</div>`,
+      iconAnchor: [0, 0],
+    });
+    const marker = L.marker([c.lat, c.lon], { icon })
+      .addTo(map)
+      .bindPopup(`<b>${c.name}</b><br>${c.type}<br>${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}<br>
+        <small>Zuletzt: ${relTime(c.last_seen)}</small>`);
+    marker.on("click", () => selectContact(c.key, c.name, c.type));
+    mapMarkers[c.key] = marker;
+  });
+}
+
+function focusMapNode(key) {
+  showMTab("map");
+  setTimeout(() => {
+    const m = mapMarkers[key];
+    if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
+  }, 100);
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+function showSTab(name) {
+  document.querySelectorAll(".stab").forEach(t =>
+    t.classList.toggle("active", t.id === "stab-" + name));
+  document.querySelectorAll(".sidebar-panel").forEach(p =>
+    p.classList.toggle("active", p.id === "spanel-" + name));
+}
+
+function showMTab(name) {
+  document.querySelectorAll(".mtab").forEach(t =>
+    t.classList.toggle("active", t.id === "mtab-" + name));
+  document.querySelectorAll(".main-panel").forEach(p =>
+    p.classList.toggle("active", p.id === "mpanel-" + name));
+  if (name === "map") {
+    if (!map) initMap();
+    setTimeout(() => map.invalidateSize(), 50);
+    socket.emit("get_map_markers");
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function doRefresh() {
+  socket.emit("refresh");
+  addSys("Aktualisiere...", "");
+}
+
+function scrollDown() {
+  const msgs = document.getElementById("messages");
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function esc(t) {
+  return String(t||"")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;");
+}
+
+function relTime(ts) {
+  if (!ts) return "?";
+  const diff = Math.floor(Date.now()/1000) - ts;
+  if (diff < 60)   return "gerade eben";
+  if (diff < 3600) return Math.floor(diff/60) + "m";
+  if (diff < 86400) return Math.floor(diff/3600) + "h";
+  return Math.floor(diff/86400) + "d";
+}
+</script>
+</body>
+</html>
