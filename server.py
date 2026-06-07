@@ -30,7 +30,7 @@ SERIAL_PORT  = os.environ.get("MC_SERIAL_PORT",
 BAUD_RATE    = int(os.environ.get("MC_BAUD_RATE", "115200"))
 HTTP_HOST    = os.environ.get("MC_HTTP_HOST", "0.0.0.0")
 HTTP_PORT    = int(os.environ.get("MC_HTTP_PORT", "5003"))
-NUM_CHANNELS = int(os.environ.get("MC_NUM_CHANNELS", "8"))
+NUM_CHANNELS = int(os.environ.get("MC_NUM_CHANNELS", "8"))  # Set MC_NUM_CHANNELS=2 if you only have 2 channels
 
 # ── Flask / SocketIO ──────────────────────────────────────────────────────────
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -93,7 +93,7 @@ async def _meshcore_loop():
     while True:
         try:
             logger.info(f"Connecting to {SERIAL_PORT} @ {BAUD_RATE} baud...")
-            mc = await MeshCore.create_serial(SERIAL_PORT, BAUD_RATE, auto_reconnect=True)
+            mc = await MeshCore.create_serial(SERIAL_PORT, BAUD_RATE, auto_reconnect=True, default_timeout=10.0)
             connected = True
             socketio.emit("status", {"connected": True, "msg": f"Verbunden · {SERIAL_PORT}"})
             logger.info("MeshCore connected")
@@ -187,10 +187,12 @@ async def _meshcore_loop():
             mc.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_msg)
             mc.subscribe(EventType.DISCONNECTED,     on_disconnect)
 
-            # Initial data load
+            # Initial data load — contacts first, then start fetching, then channels
+            await asyncio.sleep(1)
             await _push_contacts()
-            await _push_channels()
             await mc.start_auto_message_fetching()
+            await asyncio.sleep(1)
+            await _push_channels()
 
             while mc.is_connected:
                 await asyncio.sleep(2)
@@ -224,103 +226,30 @@ async def _push_contacts():
 async def _push_channels():
     global channels
     try:
-        channels = {}
+        ch_tmp = {}
         for i in range(NUM_CHANNELS):
-            res = await mc.commands.get_channel(i)
-            if res and hasattr(res, "payload") and isinstance(res.payload, dict):
-                name = res.payload.get("channel_name", "")
-                if name:  # Only include configured channels
-                    channels[i] = {
-                        "idx":  i,
-                        "name": name,
-                        "hash": res.payload.get("channel_hash", ""),
-                    }
+            try:
+                res = await mc.commands.get_channel(i)
+                if res and hasattr(res, "payload") and isinstance(res.payload, dict):
+                    p    = res.payload
+                    name = p.get("channel_name", "")
+                    idx  = p.get("channel_idx", i)
+                    if name:
+                        ch_tmp[idx] = {
+                            "idx":  idx,
+                            "name": name,
+                            "hash": p.get("channel_hash", ""),
+                        }
+                await asyncio.sleep(1.2)
+            except Exception as e:
+                logger.warning(f"get_channel({i}) failed: {e}")
+                await asyncio.sleep(0.5)
+        channels = ch_tmp
         socketio.emit("channels", list(channels.values()))
+        logger.info(f"Channels loaded: {[c['name'] for c in channels.values()]}")
     except Exception as e:
         logger.error(f"Channels error: {e}")
 
-
-# ── Flask routes ──────────────────────────────────────────────────────────────
-
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-
-# ── SocketIO events ───────────────────────────────────────────────────────────
-
-@socketio.on("connect")
-def on_ws_connect():
-    emit("status", {
-        "connected": connected,
-        "msg": "Verbunden" if connected else "Warte auf Radio..."
-    })
-    if self_info: emit("self_info", self_info)
-    if contacts:  emit("contacts", list(contacts.values()))
-    if channels:  emit("channels", list(channels.values()))
-    markers = [c for c in contacts.values() if c.get("has_gps")]
-    if markers:   emit("map_markers", markers)
-
-
-@socketio.on("send_message")
-def on_send(data):
-    if not mc or not mc_loop:
-        emit("error", {"msg": "Kein Radio verbunden"})
-        return
-    target_key = data.get("to", "__channel__")
-    ch_idx     = int(data.get("channel", 0))
-    text       = data.get("text", "").strip()
-    if not text:
-        return
-
-    async def _send():
-        try:
-            if target_key == "__channel__":
-                await mc.commands.send_chan_msg(ch_idx, text)
-                ch_name = channels.get(ch_idx, {}).get("name", f"Ch{ch_idx}")
-                socketio.emit("message", {
-                    "type":    "channel",
-                    "from":    self_info.get("name", "Ich"),
-                    "channel": ch_idx,
-                    "ch_name": ch_name,
-                    "text":    text,
-                    "ts":      ts(),
-                    "self":    True,
-                })
-            else:
-                contact = mc.get_contact_by_key_prefix(target_key)
-                if contact:
-                    await mc.commands.send_msg(contact, text)
-                    name = contacts.get(target_key, {}).get("name", target_key[:8])
-                    socketio.emit("message", {
-                        "type":    "direct",
-                        "from":    self_info.get("name", "Ich"),
-                        "to":      name,
-                        "to_key":  target_key[:16],
-                        "text":    text,
-                        "ts":      ts(),
-                        "self":    True,
-                    })
-                else:
-                    socketio.emit("error", {"msg": f"Kontakt nicht gefunden: {target_key[:8]}"})
-        except Exception as e:
-            logger.error(f"Send error: {e}")
-            socketio.emit("error", {"msg": str(e)})
-
-    asyncio.run_coroutine_threadsafe(_send(), mc_loop)
-
-
-@socketio.on("refresh")
-def on_refresh():
-    if mc and mc_loop:
-        asyncio.run_coroutine_threadsafe(_push_contacts(), mc_loop)
-        asyncio.run_coroutine_threadsafe(_push_channels(), mc_loop)
-
-
-@socketio.on("get_map_markers")
-def on_get_markers():
-    markers = [c for c in contacts.values() if c.get("has_gps")]
-    emit("map_markers", markers)
 
 
 if __name__ == "__main__":
