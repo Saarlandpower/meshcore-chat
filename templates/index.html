@@ -643,7 +643,7 @@ socket.on("contacts", list => {
   list.forEach(c => { allContacts[c.key] = c; });
   renderContactList();
   renderNodeCards();
-  document.getElementById("contactCount").textContent = list.length;
+  document.getElementById("contactCount").textContent = list.filter(c => c.type === "client").length;
   document.getElementById("nodeCount").textContent = list.length;
   document.getElementById("noContacts").style.display = list.length ? "none" : "block";
 });
@@ -706,7 +706,7 @@ function renderChannelList() {
 function renderContactList() {
   const list = document.getElementById("contactList");
   list.querySelectorAll(".contact-item").forEach(e => e.remove());
-  const sorted = Object.values(allContacts).sort((a,b) => (b.last_seen||0)-(a.last_seen||0));
+  const sorted = Object.values(allContacts).filter(c => c.type === "client").sort((a,b) => (b.last_seen||0)-(a.last_seen||0));
   sorted.forEach(c => {
     const el = document.createElement("div");
     el.className = "contact-item" + (currentTo === c.key ? " active" : "");
