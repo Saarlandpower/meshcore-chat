@@ -516,6 +516,129 @@ main {
 .card-btn.map-btn:hover { border-color: rgba(79,195,247,.3); color: var(--blue); }
 
 
+
+/* ── Settings Panel ── */
+#mpanel-settings { padding: 20px; overflow-y: auto; }
+.settings-section {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  max-width: 500px;
+}
+.settings-section-title {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  gap: 12px;
+}
+.settings-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.settings-desc {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.settings-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text-mid);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 7px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.settings-btn:hover { border-color: var(--green-dim); color: var(--green); }
+.settings-btn.primary {
+  background: rgba(0,229,160,.08);
+  border-color: var(--green-dim);
+  color: var(--green);
+}
+.settings-btn.primary:hover { background: rgba(0,229,160,.15); }
+.settings-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+.toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.toggle input { display: none; }
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg4);
+  border: 1px solid var(--border2);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background .2s, border-color .2s;
+}
+.toggle input:checked + .toggle-track {
+  background: rgba(0,229,160,.2);
+  border-color: var(--green-dim);
+}
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  top: 3px; left: 3px;
+  transition: transform .2s, background .2s;
+}
+.toggle input:checked + .toggle-track::after {
+  transform: translateX(18px);
+  background: var(--green);
+}
+
+.interval-input {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 5px 8px;
+  border-radius: 4px;
+  width: 70px;
+  text-align: center;
+}
+.interval-input:focus { outline: none; border-color: var(--green-dim); }
+
+.advert-status {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  padding: 6px 0;
+  min-height: 20px;
+}
+.advert-status.ok   { color: var(--green); }
+.advert-status.err  { color: var(--red); }
+
 /* ── Node Detail Panel ── */
 .detail-overlay {
   display: none;
@@ -691,6 +814,7 @@ body::after {
     <div class="main-tabs">
       <button class="mtab active" onclick="showMTab('chat')" id="mtab-chat">Chat</button>
       <button class="mtab" onclick="showMTab('map')" id="mtab-map">Karte</button>
+    <button class="mtab" onclick="showMTab('settings')" id="mtab-settings">⚙ Settings</button>
     </div>
 
     <!-- Chat panel -->
@@ -1015,6 +1139,73 @@ function focusMapNode(key) {
 }
 
 
+
+// ── Advert ─────────────────────────────────────────────────────────────────
+let autoAdvertTimer = null;
+
+function sendAdvert(flood) {
+  socket.emit("send_advert", { flood });
+  const st = document.getElementById("advertStatus");
+  st.className = "advert-status";
+  st.textContent = flood ? "Flood Advert wird gesendet..." : "Direct Advert wird gesendet...";
+}
+
+socket.on("advert_sent", d => {
+  const st = document.getElementById("advertStatus");
+  st.className = "advert-status " + (d.ok ? "ok" : "err");
+  st.textContent = d.ok
+    ? (d.flood ? "✓ Flood Advert gesendet" : "✓ Direct Advert gesendet")
+    : "⚠ Fehler: " + d.msg;
+  setTimeout(() => { if (st) st.textContent = ""; }, 5000);
+  if (autoAdvertTimer) updateAutoStatus();
+});
+
+function toggleAutoAdvert() {
+  const enabled = document.getElementById("autoAdvertToggle").checked;
+  if (enabled) {
+    startAutoAdvert();
+  } else {
+    stopAutoAdvert();
+  }
+}
+
+function startAutoAdvert() {
+  stopAutoAdvert();
+  const mins = parseInt(document.getElementById("advertInterval").value) || 15;
+  const ms   = mins * 60 * 1000;
+  sendAdvert(true);  // Sofort beim Aktivieren einmal senden
+  autoAdvertTimer = setInterval(() => sendAdvert(true), ms);
+  updateAutoStatus();
+}
+
+function stopAutoAdvert() {
+  if (autoAdvertTimer) {
+    clearInterval(autoAdvertTimer);
+    autoAdvertTimer = null;
+  }
+  updateAutoStatus();
+}
+
+function updateAutoStatus() {
+  const st  = document.getElementById("autoAdvertStatus");
+  const on  = document.getElementById("autoAdvertToggle").checked;
+  const min = document.getElementById("advertInterval").value;
+  st.className = "advert-status" + (on ? " ok" : "");
+  st.textContent = on ? `⏱ Auto-Advert aktiv · alle ${min} Minuten` : "";
+}
+
+// Settings panel mit Node-Info befüllen
+socket.on("self_info", d => {
+  const n = document.getElementById("settingsName");
+  const f = document.getElementById("settingsFreq");
+  const s = document.getElementById("settingsSF");
+  const t = document.getElementById("settingsTX");
+  if (n) n.textContent = d.name || "–";
+  if (f) f.textContent = d.freq ? d.freq + " MHz" : "–";
+  if (s) s.textContent = d.sf ? `SF${d.sf} / ${d.bw}kHz / CR${d.cr}` : "–";
+  if (t) t.textContent = d.tx_power ? d.tx_power + " dBm" : "–";
+});
+
 // ── Node Detail Panel ──────────────────────────────────────────────────────
 function showNodeDetail(key) {
   const c = allContacts[key] || allContacts[Object.keys(allContacts).find(k => k.startsWith(key))];
@@ -1143,6 +1334,71 @@ function relTime(ts) {
 
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
 </script>
+
+
+    <!-- Settings panel -->
+    <div class="main-panel" id="mpanel-settings">
+      <div class="settings-section">
+        <div class="settings-section-title">Advert — Manuell</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Direct Advert senden</div>
+            <div class="settings-desc">Sendet einen direkten Advert (1 Hop)</div>
+          </div>
+          <button class="settings-btn primary" onclick="sendAdvert(false)">Senden</button>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Flood Advert senden</div>
+            <div class="settings-desc">Sendet einen Flood-Advert (alle Hops)</div>
+          </div>
+          <button class="settings-btn primary" onclick="sendAdvert(true)">Flood</button>
+        </div>
+        <div class="advert-status" id="advertStatus"></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Advert — Automatisch</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Auto-Advert</div>
+            <div class="settings-desc">Sendet regelmäßig einen Flood-Advert</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="autoAdvertToggle" onchange="toggleAutoAdvert()">
+            <div class="toggle-track"></div>
+          </label>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Intervall (Minuten)</div>
+            <div class="settings-desc">Wie oft soll automatisch advertiert werden?</div>
+          </div>
+          <input type="number" class="interval-input" id="advertInterval" value="15" min="1" max="120">
+        </div>
+        <div class="advert-status" id="autoAdvertStatus"></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Node Info</div>
+        <div class="settings-row">
+          <div class="settings-label">Name</div>
+          <span id="settingsName" style="font-family:var(--mono);font-size:.75rem;color:var(--amber)">–</span>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Frequenz</div>
+          <span id="settingsFreq" style="font-family:var(--mono);font-size:.75rem;color:var(--text-mid)">–</span>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">SF / BW / CR</div>
+          <span id="settingsSF" style="font-family:var(--mono);font-size:.75rem;color:var(--text-mid)">–</span>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">TX Power</div>
+          <span id="settingsTX" style="font-family:var(--mono);font-size:.75rem;color:var(--text-mid)">–</span>
+        </div>
+      </div>
+    </div>
 
 <!-- ── Node Detail Overlay ── -->
 <div class="detail-overlay" id="detailOverlay" onclick="closeDetail(event)">

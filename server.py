@@ -335,6 +335,26 @@ def on_get_markers():
     emit("map_markers", markers)
 
 
+@socketio.on("send_advert")
+def on_send_advert(data):
+    if not mc or not mc_loop:
+        emit("advert_sent", {"ok": False, "msg": "Kein Radio verbunden"})
+        return
+    flood = bool(data.get("flood", False))
+
+    async def _advert():
+        try:
+            res = await mc.commands.send_advert(flood=flood)
+            ok  = res and hasattr(res, "type") and res.type.name != "ERROR"
+            socketio.emit("advert_sent", {"ok": ok, "flood": flood, "msg": str(getattr(res, "payload", ""))})
+            logger.info(f"Advert sent (flood={flood}): {res}")
+        except Exception as e:
+            logger.error(f"Advert error: {e}")
+            socketio.emit("advert_sent", {"ok": False, "flood": flood, "msg": str(e)})
+
+    asyncio.run_coroutine_threadsafe(_advert(), mc_loop)
+
+
 if __name__ == "__main__":
     threading.Thread(target=run_meshcore, daemon=True).start()
     socketio.run(
