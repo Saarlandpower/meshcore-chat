@@ -57,16 +57,24 @@ def contact_to_dict(key, c):
     ctype = c.get("type", 0)
     type_label = {0: "client", 1: "client", 2: "repeater", 3: "room"}.get(ctype, "unknown")
     last_advert = c.get("last_advert", 0) or 0
+    flags = c.get("flags", 0) or 0
     return {
-        "key":        key[:16],
-        "full_key":   key,
-        "name":       c.get("adv_name") or c.get("name") or key[:8],
-        "type":       type_label,
-        "lat":        lat,
-        "lon":        lon,
-        "has_gps":    (lat != 0.0 or lon != 0.0),
-        "last_advert": last_advert,
-        "last_seen":  last_advert,
+        "key":              key[:16],
+        "full_key":         key,
+        "name":             c.get("adv_name") or c.get("name") or key[:8],
+        "type":             type_label,
+        "lat":              lat,
+        "lon":              lon,
+        "has_gps":          (lat != 0.0 or lon != 0.0),
+        "last_advert":      last_advert,
+        "last_seen":        last_advert,
+        "flags":            flags,
+        "out_path_len":     c.get("out_path_len", -1),
+        "out_path":         c.get("out_path", ""),
+        "out_path_hash_mode": c.get("out_path_hash_mode", -1),
+        # flag bits: bit0=battery, bit1=moving, bit3=store_fwd
+        "flag_battery":     bool(flags & 0x01),
+        "flag_store_fwd":   bool(flags & 0x08),
     }
 
 

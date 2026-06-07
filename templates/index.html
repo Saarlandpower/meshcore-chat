@@ -4,9 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>meshcore-chat</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js">
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
+</script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
 
@@ -511,6 +515,115 @@ main {
 .card-btn:hover { border-color: var(--green-dim); color: var(--green); }
 .card-btn.map-btn:hover { border-color: rgba(79,195,247,.3); color: var(--blue); }
 
+
+/* ── Node Detail Panel ── */
+.detail-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  animation: overlayIn .15s ease;
+}
+.detail-overlay.open { display: flex; }
+@keyframes overlayIn { from{opacity:0} }
+
+.detail-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  width: 380px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: panelIn .18s ease;
+  box-shadow: 0 20px 60px rgba(0,0,0,.7);
+}
+@keyframes panelIn { from{opacity:0;transform:scale(.96)} }
+
+.detail-header {
+  padding: 16px 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.detail-icon {
+  width: 42px; height: 42px;
+  border-radius: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 0.85rem;
+  font-weight: 700; color: var(--green);
+  flex-shrink: 0;
+}
+.detail-icon.repeater { color: var(--amber); }
+.detail-icon.room     { color: var(--purple); }
+.detail-title { flex: 1; }
+.detail-name  { font-size: 1rem; font-weight: 600; }
+.detail-type  {
+  font-family: var(--mono); font-size: 0.62rem;
+  padding: 2px 7px; border-radius: 3px; margin-top: 3px;
+  display: inline-block; letter-spacing: 1px;
+}
+.detail-type.repeater { background:rgba(245,166,35,.12);color:var(--amber);border:1px solid rgba(245,166,35,.25); }
+.detail-type.client   { background:rgba(0,229,160,.08);color:var(--green);border:1px solid rgba(0,229,160,.2); }
+.detail-type.room     { background:rgba(179,157,219,.1);color:var(--purple);border:1px solid rgba(179,157,219,.2); }
+.detail-close {
+  background:none;border:none;color:var(--text-dim);
+  cursor:pointer;font-size:1.2rem;padding:4px;
+  transition:color .15s; flex-shrink:0;
+}
+.detail-close:hover { color:var(--text); }
+
+.detail-body { padding: 12px 16px; }
+
+.detail-section { margin-bottom: 14px; }
+.detail-section-title {
+  font-family: var(--mono); font-size: 0.6rem;
+  letter-spacing: 2px; color: var(--text-dim);
+  text-transform: uppercase; margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.detail-row {
+  display: flex; justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  font-size: 0.78rem;
+}
+.detail-label { color: var(--text-dim); font-family: var(--mono); font-size: 0.7rem; }
+.detail-value { color: var(--text); font-family: var(--mono); font-size: 0.75rem; text-align: right; }
+.detail-value.green  { color: var(--green); }
+.detail-value.amber  { color: var(--amber); }
+.detail-value.mono   { font-size: 0.65rem; word-break: break-all; }
+
+.detail-flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.detail-flag {
+  font-family: var(--mono); font-size: 0.62rem;
+  padding: 2px 7px; border-radius: 3px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text-mid);
+}
+.detail-flag.active { background:rgba(0,229,160,.08);color:var(--green);border-color:rgba(0,229,160,.2); }
+
+.detail-actions { padding: 12px 16px 16px; display: flex; gap: 8px; }
+.detail-btn {
+  flex: 1; padding: 9px; border-radius: 5px;
+  border: 1px solid var(--border2);
+  background: var(--bg3); color: var(--text-mid);
+  font-family: var(--mono); font-size: 0.7rem;
+  cursor: pointer; transition: all .15s; letter-spacing: 1px;
+  text-align: center;
+}
+.detail-btn:hover { border-color:var(--green-dim);color:var(--green); }
+.detail-btn.map:hover { border-color:rgba(79,195,247,.3);color:var(--blue); }
+.detail-btn.dm  { background:rgba(0,229,160,.06); }
+.detail-btn.dm:hover { border-color:var(--green);background:rgba(0,229,160,.1); }
+
 /* scanlines */
 body::after {
   content: '';
@@ -738,6 +851,7 @@ function renderNodeCards() {
     const lon  = c.lon ? c.lon.toFixed(4) : "–";
     const card = document.createElement("div");
     card.className = "contact-card";
+    card.onclick = () => showNodeDetail(c.key);
     card.innerHTML = `
       <div class="card-header">
         <div class="card-icon ${iconClass}">${initials}</div>
@@ -887,7 +1001,7 @@ function updateMapMarkers(markers) {
       .addTo(map)
       .bindPopup(`<b>${c.name}</b><br>${c.type}<br>${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}<br>
         <small>Zuletzt: ${relTime(c.last_seen)}</small>`);
-    marker.on("click", () => selectContact(c.key, c.name, c.type));
+    marker.on("click", () => showNodeDetail(c.key));
     mapMarkers[c.key] = marker;
   });
 }
@@ -898,6 +1012,86 @@ function focusMapNode(key) {
     const m = mapMarkers[key];
     if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
   }, 100);
+}
+
+
+// ── Node Detail Panel ──────────────────────────────────────────────────────
+function showNodeDetail(key) {
+  const c = allContacts[key] || allContacts[Object.keys(allContacts).find(k => k.startsWith(key))];
+  if (!c) return;
+
+  const isClient   = c.type === "client";
+  const isRepeater = c.type === "repeater";
+  const isRoom     = c.type === "room";
+  const initials   = (c.name||"??").substring(0,2).toUpperCase();
+  const typeLabels = { client:"CLIENT", repeater:"REPEATER", room:"ROOM SERVER" };
+
+  document.getElementById("dIcon").textContent  = initials;
+  document.getElementById("dIcon").className    = "detail-icon " + c.type;
+  document.getElementById("dName").textContent  = c.name;
+  const dType = document.getElementById("dType");
+  dType.textContent  = typeLabels[c.type] || c.type.toUpperCase();
+  dType.className    = "detail-type " + c.type;
+
+  // Position
+  const posSection = document.getElementById("dSectionPos");
+  if (c.has_gps) {
+    posSection.style.display = "block";
+    document.getElementById("dLat").textContent = c.lat.toFixed(5) + "°";
+    document.getElementById("dLon").textContent = c.lon.toFixed(5) + "°";
+  } else {
+    posSection.style.display = "none";
+  }
+
+  // Network
+  document.getElementById("dLastSeen").textContent = relTime(c.last_seen);
+  const hops = c.out_path_len >= 0 ? c.out_path_len + " Hops" : "unbekannt";
+  document.getElementById("dHops").textContent = hops;
+  document.getElementById("dPath").textContent  = c.out_path || "–";
+
+  // Key
+  document.getElementById("dKey").textContent = (c.full_key || c.key).substring(0, 32) + "...";
+
+  // Flags
+  const flagsEl = document.getElementById("dFlags");
+  flagsEl.innerHTML = "";
+  const flags = [
+    { key: "flag_battery",   label: "🔋 Batterie" },
+    { key: "flag_store_fwd", label: "📦 Store & Forward" },
+    { key: "has_gps",        label: "📍 GPS" },
+  ];
+  flags.forEach(f => {
+    const el = document.createElement("span");
+    el.className = "detail-flag" + (c[f.key] ? " active" : "");
+    el.textContent = f.label;
+    flagsEl.appendChild(el);
+  });
+
+  // Actions
+  const actions = document.getElementById("dActions");
+  actions.innerHTML = "";
+  if (c.has_gps) {
+    const mapBtn = document.createElement("button");
+    mapBtn.className = "detail-btn map";
+    mapBtn.textContent = "🗺 Karte";
+    mapBtn.onclick = () => { closeDetail(); focusMapNode(key); };
+    actions.appendChild(mapBtn);
+  }
+  if (isClient) {
+    const dmBtn = document.createElement("button");
+    dmBtn.className = "detail-btn dm";
+    dmBtn.textContent = "💬 Nachricht";
+    dmBtn.onclick = () => { closeDetail(); selectContact(c.key, c.name, c.type); showMTab("chat"); showSTab("chats"); };
+    actions.appendChild(dmBtn);
+  }
+
+  document.getElementById("detailOverlay").classList.add("open");
+}
+
+function closeDetail(e) {
+  if (!e || e.target === document.getElementById("detailOverlay")) {
+    document.getElementById("detailOverlay").classList.remove("open");
+  }
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
@@ -946,6 +1140,45 @@ function relTime(ts) {
   if (diff < 86400) return Math.floor(diff/3600) + "h";
   return Math.floor(diff/86400) + "d";
 }
+
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetail(); });
 </script>
+
+<!-- ── Node Detail Overlay ── -->
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail(event)">
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-header">
+      <div class="detail-icon" id="dIcon"></div>
+      <div class="detail-title">
+        <div class="detail-name" id="dName"></div>
+        <span class="detail-type" id="dType"></span>
+      </div>
+      <button class="detail-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-body">
+      <div class="detail-section" id="dSectionPos" style="display:none">
+        <div class="detail-section-title">Position</div>
+        <div class="detail-row"><span class="detail-label">Breitengrad</span><span class="detail-value" id="dLat"></span></div>
+        <div class="detail-row"><span class="detail-label">Längengrad</span><span class="detail-value" id="dLon"></span></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Netzwerk</div>
+        <div class="detail-row"><span class="detail-label">Zuletzt gesehen</span><span class="detail-value green" id="dLastSeen"></span></div>
+        <div class="detail-row"><span class="detail-label">Pfad (Hops)</span><span class="detail-value" id="dHops"></span></div>
+        <div class="detail-row"><span class="detail-label">Pfad Hash</span><span class="detail-value" id="dPath"></span></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Identität</div>
+        <div class="detail-row"><span class="detail-label">Public Key</span><span class="detail-value mono" id="dKey"></span></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Funktionen</div>
+        <div class="detail-flags" id="dFlags"></div>
+      </div>
+    </div>
+    <div class="detail-actions" id="dActions"></div>
+  </div>
+</div>
+
 </body>
 </html>
