@@ -26,7 +26,7 @@ logger = logging.getLogger("meshcore-chat")
 
 # ── Config (override via environment variables) ───────────────────────────────
 SERIAL_PORT  = os.environ.get("MC_SERIAL_PORT",
-    "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_E0:72:A1:F9:F1:50-if00")
+    "/dev/serial/by-id/usb-YOUR_DEVICE_HERE")
 BAUD_RATE    = int(os.environ.get("MC_BAUD_RATE", "115200"))
 HTTP_HOST    = os.environ.get("MC_HTTP_HOST", "0.0.0.0")
 HTTP_PORT    = int(os.environ.get("MC_HTTP_PORT", "5003"))
