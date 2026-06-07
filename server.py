@@ -252,6 +252,89 @@ async def _push_channels():
 
 
 
+# ── Flask routes ──────────────────────────────────────────────────────────────
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+# ── SocketIO events ───────────────────────────────────────────────────────────
+
+@socketio.on("connect")
+def on_ws_connect():
+    emit("status", {
+        "connected": connected,
+        "msg": "Verbunden" if connected else "Warte auf Radio..."
+    })
+    if self_info: emit("self_info", self_info)
+    if contacts:  emit("contacts", list(contacts.values()))
+    if channels:  emit("channels", list(channels.values()))
+    markers = [c for c in contacts.values() if c.get("has_gps")]
+    if markers:   emit("map_markers", markers)
+
+
+@socketio.on("send_message")
+def on_send(data):
+    if not mc or not mc_loop:
+        emit("error", {"msg": "Kein Radio verbunden"})
+        return
+    target_key = data.get("to", "__channel__")
+    ch_idx     = int(data.get("channel", 0))
+    text       = data.get("text", "").strip()
+    if not text:
+        return
+
+    async def _send():
+        try:
+            if target_key == "__channel__":
+                await mc.commands.send_chan_msg(ch_idx, text)
+                ch_name = channels.get(ch_idx, {}).get("name", f"Ch{ch_idx}")
+                socketio.emit("message", {
+                    "type":    "channel",
+                    "from":    self_info.get("name", "Ich"),
+                    "channel": ch_idx,
+                    "ch_name": ch_name,
+                    "text":    text,
+                    "ts":      ts(),
+                    "self":    True,
+                })
+            else:
+                contact = mc.get_contact_by_key_prefix(target_key)
+                if contact:
+                    await mc.commands.send_msg(contact, text)
+                    name = contacts.get(target_key, {}).get("name", target_key[:8])
+                    socketio.emit("message", {
+                        "type":    "direct",
+                        "from":    self_info.get("name", "Ich"),
+                        "to":      name,
+                        "to_key":  target_key[:16],
+                        "text":    text,
+                        "ts":      ts(),
+                        "self":    True,
+                    })
+                else:
+                    socketio.emit("error", {"msg": f"Kontakt nicht gefunden: {target_key[:8]}"})
+        except Exception as e:
+            logger.error(f"Send error: {e}")
+            socketio.emit("error", {"msg": str(e)})
+
+    asyncio.run_coroutine_threadsafe(_send(), mc_loop)
+
+
+@socketio.on("refresh")
+def on_refresh():
+    if mc and mc_loop:
+        asyncio.run_coroutine_threadsafe(_push_contacts(), mc_loop)
+        asyncio.run_coroutine_threadsafe(_push_channels(), mc_loop)
+
+
+@socketio.on("get_map_markers")
+def on_get_markers():
+    markers = [c for c in contacts.values() if c.get("has_gps")]
+    emit("map_markers", markers)
+
+
 if __name__ == "__main__":
     threading.Thread(target=run_meshcore, daemon=True).start()
     socketio.run(
@@ -261,3 +344,4 @@ if __name__ == "__main__":
         debug=False,
         allow_unsafe_werkzeug=True
     )
+
