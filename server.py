@@ -181,6 +181,7 @@ async def _meshcore_loop():
             mc.subscribe(EventType.SELF_INFO,        on_self_info)
             mc.subscribe(EventType.CONTACTS,         on_contacts)
             mc.subscribe(EventType.NEW_CONTACT,      on_new_contact)
+            mc.subscribe(EventType.NEXT_CONTACT,     on_new_contact)
             mc.subscribe(EventType.ADVERTISEMENT,    on_advert)
             mc.subscribe(EventType.CONTACT_MSG_RECV, on_direct_msg)
             mc.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_msg)
@@ -205,7 +206,7 @@ async def _meshcore_loop():
 async def _push_contacts():
     global contacts
     try:
-        await mc.ensure_contacts()
+        await mc.ensure_contacts(follow=True)
         raw = mc.contacts or {}
         contacts = {}
         if isinstance(raw, dict):
