@@ -9,12 +9,14 @@ Supports: Direct Messages, Channels, Contact List, GPS Map.
 
 import asyncio
 import os
+import sqlite3
 import threading
 import logging
 import time
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 from meshcore import MeshCore
+import db as chatdb
 from meshcore.events import EventType
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -31,6 +33,8 @@ BAUD_RATE    = int(os.environ.get("MC_BAUD_RATE", "115200"))
 HTTP_HOST    = os.environ.get("MC_HTTP_HOST", "0.0.0.0")
 HTTP_PORT    = int(os.environ.get("MC_HTTP_PORT", "5003"))
 NUM_CHANNELS = int(os.environ.get("MC_NUM_CHANNELS", "8"))  # Set MC_NUM_CHANNELS=2 if you only have 2 channels
+DB_PATH      = os.environ.get("MC_DB_PATH", "/opt/meshcore-chat/messages.db")
+MSG_HISTORY  = int(os.environ.get("MC_MSG_HISTORY", "200"))
 
 # ── Flask / SocketIO ──────────────────────────────────────────────────────────
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -49,6 +53,14 @@ connected = False
 def ts():
     return int(time.time())
 
+chatdb.init()
+
+
+def conv_key_channel(ch_idx):
+    return f'ch_{ch_idx}'
+
+def conv_key_direct(key):
+    return f'dm_{key[:16]}'
 
 def contact_to_dict(key, c):
     """Normalize a meshcore contact dict for the frontend."""
@@ -140,14 +152,18 @@ async def _meshcore_loop():
                 elif sender_key:
                     sender_name = sender_key[:8]
                 text = msg.get("text", "") or msg.get("msg", "")
-                socketio.emit("message", {
+                ck = conv_key_direct(sender_key) if sender_key else "dm_unknown"
+                m = {
                     "type":      "direct",
                     "from":      sender_name or "Unknown",
                     "from_key":  sender_key[:16] if sender_key else "",
                     "text":      str(text),
                     "ts":        ts(),
                     "self":      False,
-                })
+                    "conv_key":  ck,
+                }
+                chatdb.save(m)
+                socketio.emit("message", m)
 
             def on_channel_msg(event):
                 msg = event.payload if hasattr(event, "payload") and event.payload is not None else {}
@@ -163,7 +179,7 @@ async def _meshcore_loop():
                     parts  = raw_text.split(": ", 1)
                     sender = parts[0]
                     text   = parts[1]
-                socketio.emit("message", {
+                m = {
                     "type":     "channel",
                     "from":     str(sender) or "?",
                     "channel":  ch_idx,
@@ -171,7 +187,10 @@ async def _meshcore_loop():
                     "text":     str(text),
                     "ts":       ts(),
                     "self":     False,
-                })
+                    "conv_key": conv_key_channel(ch_idx),
+                }
+                chatdb.save(m)
+                socketio.emit("message", m)
 
             def on_disconnect(event):
                 global connected
@@ -259,6 +278,18 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/history/<path:conv_key>")
+def history(conv_key):
+    from flask import jsonify
+    return jsonify(chatdb.get_history(conv_key))
+
+
+@app.route("/conversations")
+def conversations():
+    from flask import jsonify
+    return jsonify(chatdb.get_conversations())
+
+
 # ── SocketIO events ───────────────────────────────────────────────────────────
 
 @socketio.on("connect")
@@ -272,6 +303,13 @@ def on_ws_connect():
     if channels:  emit("channels", list(channels.values()))
     markers = [c for c in contacts.values() if c.get("has_gps")]
     if markers:   emit("map_markers", markers)
+    # Send stored history for all known conversations
+    convs = chatdb.get_conversations()
+    emit("conversations", convs)
+    for conv in convs:
+        msgs = chatdb.get_history(conv["conv_key"])
+        if msgs:
+            emit("history", {"conv_key": conv["conv_key"], "messages": msgs})
 
 
 @socketio.on("send_message")
@@ -290,7 +328,7 @@ def on_send(data):
             if target_key == "__channel__":
                 await mc.commands.send_chan_msg(ch_idx, text)
                 ch_name = channels.get(ch_idx, {}).get("name", f"Ch{ch_idx}")
-                socketio.emit("message", {
+                m = {
                     "type":    "channel",
                     "from":    self_info.get("name", "Ich"),
                     "channel": ch_idx,
@@ -298,13 +336,16 @@ def on_send(data):
                     "text":    text,
                     "ts":      ts(),
                     "self":    True,
-                })
+                    "conv_key": conv_key_channel(ch_idx),
+                }
+                chatdb.save(m)
+                socketio.emit("message", m)
             else:
                 contact = mc.get_contact_by_key_prefix(target_key)
                 if contact:
                     await mc.commands.send_msg(contact, text)
                     name = contacts.get(target_key, {}).get("name", target_key[:8])
-                    socketio.emit("message", {
+                    m = {
                         "type":    "direct",
                         "from":    self_info.get("name", "Ich"),
                         "to":      name,
@@ -312,7 +353,10 @@ def on_send(data):
                         "text":    text,
                         "ts":      ts(),
                         "self":    True,
-                    })
+                        "conv_key": conv_key_direct(target_key),
+                    }
+                    chatdb.save(m)
+                    socketio.emit("message", m)
                 else:
                     socketio.emit("error", {"msg": f"Kontakt nicht gefunden: {target_key[:8]}"})
         except Exception as e:
@@ -327,6 +371,15 @@ def on_refresh():
     if mc and mc_loop:
         asyncio.run_coroutine_threadsafe(_push_contacts(), mc_loop)
         asyncio.run_coroutine_threadsafe(_push_channels(), mc_loop)
+
+
+@socketio.on("get_history")
+def on_get_history(data):
+    conv_key = data.get("conv_key", "")
+    emit("history", {
+        "conv_key": conv_key,
+        "messages": chatdb.get_history(conv_key)
+    })
 
 
 @socketio.on("get_map_markers")

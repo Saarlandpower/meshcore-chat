@@ -921,6 +921,28 @@ socket.on("message", msg => {
 
 socket.on("error", d => addSys("⚠ " + d.msg, "error"));
 
+socket.on("history", d => {
+  const key  = d.conv_key;
+  const msgs = d.messages || [];
+  if (!msgs.length) return;
+  // Speichere in msgStore (überschreibe nicht falls bereits neuere live msgs da)
+  if (!msgStore[key]) msgStore[key] = [];
+  // Merge: nur hinzufügen was noch nicht da ist (nach ts)
+  const existing = new Set(msgStore[key].map(m => m.ts + m.text));
+  const newMsgs  = msgs.filter(m => !existing.has(m.ts + m.text));
+  msgStore[key]  = [...newMsgs, ...msgStore[key]].sort((a,b) => a.ts - b.ts);
+  // Falls dieser Conv gerade aktiv ist: neu rendern
+  if (key === currentConvKey()) renderStoredMsgs(key);
+});
+
+socket.on("conversations", convs => {
+  // Markiere Channels/Contacts die History haben mit einem Indikator
+  convs.forEach(c => {
+    const el = document.querySelector(`[data-convkey="${c.conv_key}"]`);
+    if (el) el.classList.add("has-history");
+  });
+});
+
 // ── Rendering ──────────────────────────────────────────────────────────────
 function renderChannelList() {
   const list = document.getElementById("channelList");
@@ -935,6 +957,7 @@ function renderChannelList() {
         <div class="item-name">${esc(ch.name)}</div>
         <div class="item-meta">ch${ch.idx} · hash ${ch.hash}</div>
       </div>`;
+    el.dataset.convkey = `ch_${ch.idx}`;
     el.onclick = () => selectChannel(ch.idx, ch.name);
     list.appendChild(el);
   });
@@ -958,6 +981,7 @@ function renderContactList() {
         <div class="item-meta">${c.type} · ${age}</div>
       </div>
       ${c.has_gps ? '<div class="gps-dot"></div>' : ''}`;
+    el.dataset.convkey = `dm_${c.key}`;
     el.onclick = () => selectContact(c.key, c.name, c.type);
     list.appendChild(el);
   });
@@ -1061,6 +1085,10 @@ function updateChatHeader() {
 }
 
 function renderStoredMsgs(key) {
+  // Lade History vom Server falls noch nicht da
+  if (!msgStore[key] || msgStore[key].length === 0) {
+    socket.emit("get_history", { conv_key: key });
+  }
   const msgs = document.getElementById("messages");
   msgs.innerHTML = "";
   const stored = msgStore[key] || [];
@@ -1314,6 +1342,11 @@ function doRefresh() {
 function scrollDown() {
   const msgs = document.getElementById("messages");
   msgs.scrollTop = msgs.scrollHeight;
+}
+
+function currentConvKey() {
+  if (currentType === "channel") return `ch_${currentCh}`;
+  return `dm_${currentTo}`;
 }
 
 function esc(t) {
